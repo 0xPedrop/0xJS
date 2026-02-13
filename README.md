@@ -1,8 +1,6 @@
 # 0xJS SCAN CHECKER 🏴‍☠️
 
-<p align="center">
-  <img src="Banner.png" alt="0xJS SCAN CHECKER Banner" width="600">
-</p>
+
 
 Uma ferramenta rápida e eficiente desenvolvida para automatizar o reconhecimento de segurança em arquivos JavaScript, focada na descoberta de segredos e potenciais alvos para **Dependency Confusion**.
 
