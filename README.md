@@ -24,8 +24,9 @@ chmod +x 0xJS
 sudo mv 0xJS /usr/local/bin/
 ```
 
-##🚀 Como usar
-Exemplos de uso:
+## 🚀 Como usar
+Exemplos de uso:  
+  
 Analisar uma URL única: 
 ```bash
 0xJS -u https://alvo.com/assets/main.js -o minhacorp
@@ -35,7 +36,7 @@ Analisar uma lista de URLs com multithreading:
 0xJS -l urls_js.txt -t 100
 ```
 ## 🛠️ Argumentos
-Flag Descrição
+Flag | Descrição
 * -u Analisa uma única URL de arquivo JS. 
 * -l Caminho para um arquivo .txt contendo uma lista de URLs. 
 * -o Nome da organização para busca customizada. 
