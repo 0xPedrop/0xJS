@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+import requests
+import re
+import argparse
+import sys
+import urllib3
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+print_lock = threading.Lock()
+
+class Colors:
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    RED = '\033[91m'
+    YELLOW = '\033[93m'
+    BOLD = '\033[1m'
+    ENDC = '\033[0m'
+
+total_urls = 0
+processed_urls = 0
+
+WHITELIST = {
+    'react', 'react-dom', 'redux', 'axios', 'lodash', 'moment', 'jquery', 
+    'vue', 'angular', 'bootstrap', 'next', 'express', 'uuid', 'path', 'fs', 
+    'crypto', 'os', 'util', 'stream', 'buffer', 'core-js', 'webpack'
+}
+
+def banner():
+    print(f"""{Colors.BOLD}{Colors.CYAN}
+                  [ 0xJS ]
+                 by 0xPedrop      
+          
+             github.com/0xPedrop
+
+   Hunt for Dependency Confusion & Secrets
+    {Colors.ENDC}""")
+
+def print_progress():
+    if total_urls > 0:
+        percent = (processed_urls / total_urls) * 100
+        sys.stdout.write(f"\r{Colors.CYAN}[*] Progress: {processed_urls}/{total_urls} ({percent:.1f}%){Colors.ENDC}")
+        sys.stdout.flush()
+
+def analyze_url(url, target_org=None):
+    global processed_urls
+    
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (BugBounty Research; Researcher)'}
+        response = requests.get(url, headers=headers, timeout=7, verify=False)
+        content = response.text
+    except Exception:
+        with print_lock:
+            processed_urls += 1
+            print_progress()
+        return
+    
+    regex_scoped = r'["\'](@[a-zA-Z0-9\-\_]+\/[a-zA-Z0-9\-\_\.]+)["\']'
+    
+    regex_imports = r'(?:require\(|from)\s*["\']([a-zA-Z0-9\-\_]+)["\']'
+    
+    regex_files = r'["\']([a-zA-Z0-9\-\_\/]+\.(?:json|xml|yaml|yml|env|config))["\']'
+    regex_cloud = r'([a-z0-9\-\.]+\.s3\.amazonaws\.com)|(storage\.googleapis\.com\/[a-z0-9\-\.]+)'
+    
+    regex_keys = r'(?i)((?:api_?key|access_?token|auth_?token|secret)[a-z0-9_\.\-]*\s*[:=]\s*["\'][a-z0-9_\.\-]+["\'])'
+
+    found_scoped = set(re.findall(regex_scoped, content))
+    found_imports = set(re.findall(regex_imports, content))
+    
+    clean_unscoped = {pkg for pkg in found_imports if pkg.lower() not in WHITELIST}
+
+    findings = {
+        "📦 Scoped Pkg": found_scoped,
+        "📦 Unscoped (Potential)": clean_unscoped,
+        "📄 Config Files": set(re.findall(regex_files, content)),
+        "☁️ Cloud Resources": {next((i for i in item if i), "N/A") for item in re.findall(regex_cloud, content)},
+        "🔑 Secrets": set(re.findall(regex_keys, content))
+    }
+
+    if target_org:
+        regex_custom = r'["\'](' + re.escape(target_org) + r'[a-zA-Z0-9\-\_]*)["\']'
+        custom_hits = set(re.findall(regex_custom, content))
+        custom_hits = {h for h in custom_hits if h.lower() not in WHITELIST and len(h) > len(target_org)}
+        if custom_hits:
+            findings[f"🎯 {target_org.upper()} Pattern"] = custom_hits
+
+    has_findings = any(len(v) > 0 for v in findings.values())
+
+    with print_lock:
+        processed_urls += 1
+        print_progress() 
+
+        if has_findings:
+            sys.stdout.write('\r' + ' ' * 80 + '\r') 
+            print(f"{Colors.BOLD}[+] TARGET: {Colors.CYAN}{url}{Colors.ENDC}")
+            
+            for category, items in findings.items():
+                if items:
+                    for item in items:
+                        if any(x in item.lower() for x in ["node_modules", "w3.org", "schema.org", "jquery.min.js"]):
+                            continue
+                        print(f"    └── {category}: {Colors.YELLOW}{item}{Colors.ENDC}")
+            print("") 
+
+def main():
+    global total_urls
+    banner()
+    
+    parser = argparse.ArgumentParser(description="0xJS Scan - Hunt for secrets and dependency confusion")
+    
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("-l", "--list", help="File with list of JS URLs")
+    group.add_argument("-u", "--url", help="Single JS URL to scan")
+    
+    parser.add_argument("-t", "--threads", help="Number of threads (Default: 50)", type=int, default=50)
+    parser.add_argument("-o", "--org", help="Target Organization name (ex: paypal)", type=str)
+    args = parser.parse_args()
+
+    urls = []
+    if args.url:
+        urls.append(args.url)
+    else:
+        try:
+            with open(args.list, 'r') as f:
+                urls = [line.strip() for line in f if line.strip()]
+        except FileNotFoundError:
+            print(f"{Colors.RED}[!] Error: File '{args.list}' not found.{Colors.ENDC}")
+            sys.exit(1)
+
+    total_urls = len(urls)
+    
+    if total_urls > 1:
+        print(f"{Colors.BOLD}[*] Scan started on {total_urls} URLs with {args.threads} threads...{Colors.ENDC}")
+    else:
+        print(f"{Colors.BOLD}[*] Scanning single target...{Colors.ENDC}")
+
+    if args.org:
+        print(f"[*] Custom hunt enabled for: {Colors.GREEN}{args.org}{Colors.ENDC}\n")
+    
+    with ThreadPoolExecutor(max_workers=args.threads if not args.url else 1) as executor:
+        for url in urls:
+            executor.submit(analyze_url, url, args.org)
+            
+    if total_urls > 1:
+        sys.stdout.write('\r' + ' ' * 80 + '\r')
+        print(f"{Colors.GREEN}[!] Scan Completed!{Colors.ENDC}")
+
+if __name__ == "__main__":
+    main()
