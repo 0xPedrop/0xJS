@@ -24,7 +24,7 @@ chmod +x 0xJS
 sudo mv 0xJS /usr/local/bin/
 ```
 
-🚀 Como usar
+##🚀 Como usar
 Exemplos de uso:
 Analisar uma URL única: 
 ```bash
