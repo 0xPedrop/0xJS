@@ -25,6 +25,9 @@ sudo mv 0xJS /usr/local/bin/
 ```
 
 🚀 Como usar
+<p align="center">
+  <img src="Usage.png" alt="0xJS SCAN CHECKER Usage" width="600">
+</p>
 Exemplos de uso:
 Analisar uma URL única: 
 ```bash
