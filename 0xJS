@@ -6,6 +6,7 @@ import sys
 import urllib3
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urljoin
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -56,7 +57,11 @@ def analyze_url(url, target_org=None):
             processed_urls += 1
             print_progress()
         return
-    
+
+    regex_base_urls = r'(?i)(?:base_?url|api_?url|endpoint|host)[\s:=]*["\'](https?://[^"\']+)["\']'
+
+    regex_routes = r'(?:"|\')((?:https?://[^"\'\s]+)|(?:/[a-zA-Z0-9_\-\.\/\?\&\=]+)|(?:(?:api|v[0-9]+)/[a-zA-Z0-9_\-\.\/\?\&\=]+))(?:"|\')'
+
     regex_scoped = r'["\'](@[a-zA-Z0-9\-\_]+\/[a-zA-Z0-9\-\_\.]+)["\']'
     
     regex_imports = r'(?:require\(|from)\s*["\']([a-zA-Z0-9\-\_]+)["\']'
@@ -66,17 +71,36 @@ def analyze_url(url, target_org=None):
     
     regex_keys = r'(?i)((?:api_?key|access_?token|auth_?token|secret)[a-z0-9_\.\-]*\s*[:=]\s*["\'][a-z0-9_\.\-]+["\'])'
 
+    found_base_urls = set(re.findall(regex_base_urls, content))
+
+    base_urls_to_test = {url}
+    found_routes_raw = set(re.findall(regex_routes, content))
+    constructed_urls = set()
+
     found_scoped = set(re.findall(regex_scoped, content))
     found_imports = set(re.findall(regex_imports, content))
     
     clean_unscoped = {pkg for pkg in found_imports if pkg.lower() not in WHITELIST}
+
+    for route in found_routes_raw:
+        if len(route) < 4 or any(x in route.lower() for x in ['w3.org', 'schema.org', 'application/', 'text/', 'image/']):
+            continue
+        
+        if route.startswith("http"):
+            constructed_urls.add(route)
+            continue
+            
+        for base in base_urls_to_test:
+            full_url = urljoin(base, route)
+            constructed_urls.add(full_url)
 
     findings = {
         "📦 Scoped Pkg": found_scoped,
         "📦 Unscoped (Potential)": clean_unscoped,
         "📄 Config Files": set(re.findall(regex_files, content)),
         "☁️ Cloud Resources": {next((i for i in item if i), "N/A") for item in re.findall(regex_cloud, content)},
-        "🔑 Secrets": set(re.findall(regex_keys, content))
+        "🔑 Secrets": set(re.findall(regex_keys, content)),
+        "🔗 Endpoints/Rotas Ocultas": constructed_urls
     }
 
     if target_org:
